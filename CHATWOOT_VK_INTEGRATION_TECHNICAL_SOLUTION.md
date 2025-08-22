@@ -1,62 +1,47 @@
-# Chatwoot VK.com Integration - Technical Solution
+# Chatwoot VK.com Integration - Ruby Implementation Guide
 
 ## Overview
 
-This document provides a comprehensive technical solution for integrating VK.com (VKontakte) into Chatwoot's inbox system. The solution covers both Ruby-native integration and Python microservice approaches, following Chatwoot's established patterns for channel integrations.
+This document provides a comprehensive technical solution for integrating VK.com (VKontakte) into Chatwoot's inbox system using Ruby, following the established patterns of Facebook and Instagram integrations.
 
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
 2. [VK API Analysis](#vk-api-analysis)
-3. [Ruby Implementation (Recommended)](#ruby-implementation-recommended)
-4. [Python Microservice Implementation](#python-microservice-implementation)
-5. [Database Schema](#database-schema)
-6. [Authentication & OAuth Flow](#authentication--oauth-flow)
-7. [Webhook Implementation](#webhook-implementation)
-8. [Message Processing Workflow](#message-processing-workflow)
-9. [Configuration & Environment Variables](#configuration--environment-variables)
-10. [Security Considerations](#security-considerations)
-11. [Testing Strategy](#testing-strategy)
-12. [Deployment Guide](#deployment-guide)
+3. [Ruby Implementation](#ruby-implementation)
+4. [Database Schema](#database-schema)
+5. [Authentication & OAuth Flow](#authentication--oauth-flow)
+6. [Webhook Implementation](#webhook-implementation)
+7. [Message Processing Workflow](#message-processing-workflow)
+8. [Configuration & Environment Variables](#configuration--environment-variables)
+9. [Security Considerations](#security-considerations)
+10. [Testing Strategy](#testing-strategy)
+11. [Deployment Guide](#deployment-guide)
 
 ## Architecture Overview
 
-VK.com integration will follow Chatwoot's channel pattern, similar to existing Facebook and Instagram integrations. The system will support:
+VK.com integration follows Chatwoot's established channel pattern, identical to Facebook and Instagram integrations. The system supports:
 
 - **VK Communities (Groups)** - Business pages that can receive and send messages
-- **VK Personal Messages** - Direct user-to-user messaging (limited by VK API)
 - **Callback API** - VK's webhook system for real-time message delivery
-- **Long Poll API** - Alternative method for receiving messages
+- **OAuth 2.0 Flow** - Standard authorization pattern like other social channels
+- **Message Synchronization** - Bidirectional message sync between VK and Chatwoot
 
-### Integration Approaches
+### Integration Pattern
 
-1. **Ruby Native Integration** (Recommended)
-   - Follows existing Chatwoot patterns
-   - Easier maintenance and deployment
-   - Consistent with codebase architecture
-
-2. **Python Microservice**
-   - Leverages mature Python VK clients
-   - Separate service communication via HTTP/gRPC
-   - More complex deployment but allows language specialization
+The VK integration follows the exact same pattern as Facebook/Instagram:
+1. **Channel Model** - `Channel::Vk` similar to `Channel::FacebookPage`
+2. **OAuth Controller** - Authorization flow handling
+3. **Webhook Controller** - Incoming message processing
+4. **Services** - Message sending and processing
+5. **Jobs** - Asynchronous webhook event processing
 
 ## VK API Analysis
-
-### Available VK API Clients
-
-#### Ruby Clients
-- **vk-ruby** (https://github.com/7even/vk-ruby) - Basic VK API wrapper
-- **Custom implementation** - Direct HTTP API calls
-
-#### Python Clients
-- **vk_api** (https://github.com/python273/vk_api) - Most mature and feature-rich
-- **vkbottle** (https://github.com/vkbottle/vkbottle) - Modern async framework
-- **pyvk** (https://github.com/dimka665/vk) - Lightweight wrapper
 
 ### VK API Capabilities
 
 #### Messaging Features
-- `messages.send` - Send messages to users/groups
+- `messages.send` - Send messages to users/communities
 - `messages.getHistory` - Retrieve message history
 - `messages.getConversations` - Get conversation list
 - `messages.setActivity` - Set typing indicators
@@ -70,39 +55,46 @@ VK.com integration will follow Chatwoot's channel pattern, similar to existing F
 - `message_deny` - User blocked messages from community
 
 #### Authentication Methods
+- **Group Token** - For community management (recommended)
 - **User Token** - For personal account access
-- **Group Token** - For community management
 - **Service Token** - For server-side operations
 
-## Ruby Implementation (Recommended)
+### Available Ruby VK Clients
+
+- **vk-ruby** (https://github.com/7even/vk-ruby) - Basic VK API wrapper
+- **Custom HTTP implementation** - Direct API calls using HTTParty (recommended)
+
+## Ruby Implementation
 
 ### File Structure
+
+Following Chatwoot's established pattern:
 
 ```
 app/
 ├── models/
 │   └── channel/
-│       └── vk.rb                    # VK channel model
+│       └── vk.rb                        # VK channel model
 ├── controllers/
 │   ├── webhooks/
-│   │   └── vk_controller.rb         # VK webhook handler
+│   │   └── vk_controller.rb             # VK webhook handler
 │   ├── vk/
-│   │   └── callbacks_controller.rb  # VK OAuth callbacks
+│   │   └── callbacks_controller.rb      # VK OAuth callbacks
 │   └── concerns/
-│       └── vk_concern.rb            # VK OAuth utilities
+│       └── vk_concern.rb                # VK OAuth utilities
 ├── services/
 │   └── vk/
-│       ├── send_on_vk_service.rb    # Send messages to VK
-│       ├── message_text_service.rb  # Process incoming messages
-│       ├── oauth_service.rb         # Handle OAuth flow
-│       └── webhook_service.rb       # Process webhook events
+│       ├── send_on_vk_service.rb        # Send messages to VK
+│       ├── message_text_service.rb      # Process incoming messages
+│       ├── webhook_service.rb           # Webhook management
+│       └── base_service.rb              # Base VK service
 ├── jobs/
 │   └── webhooks/
-│       └── vk_events_job.rb         # VK webhook event processor
+│       └── vk_events_job.rb             # VK webhook event processor
 └── builders/
     └── messages/
         └── vk/
-            └── message_builder.rb   # VK message builder
+            └── message_builder.rb       # VK message builder
 ```
 
 ### 1. VK Channel Model
@@ -119,6 +111,7 @@ class Channel::Vk < ApplicationRecord
 
   validates :access_token, presence: true
   validates :group_id, presence: true, uniqueness: { scope: :account_id }
+  validates :group_name, presence: true
 
   after_create_commit :setup_webhook
   before_destroy :remove_webhook
@@ -164,7 +157,11 @@ end
 # app/controllers/webhooks/vk_controller.rb
 class Webhooks::VkController < ActionController::API
   before_action :verify_signature
-  
+
+  def verify
+    render plain: params['hub.challenge'] if valid_verify_token?
+  end
+
   def events
     Rails.logger.info('VK webhook received events')
     
@@ -173,10 +170,10 @@ class Webhooks::VkController < ActionController::API
       render plain: confirmation_token
     when 'message_new', 'message_reply'
       Webhooks::VkEventsJob.perform_later(params.to_unsafe_hash)
-      render json: { ok: true }
+      render plain: 'ok'
     else
       Rails.logger.warn("Unhandled VK event type: #{params['type']}")
-      render json: { ok: true }
+      render plain: 'ok'
     end
   end
 
@@ -185,16 +182,24 @@ class Webhooks::VkController < ActionController::API
   def verify_signature
     return if Rails.env.development?
     
-    # VK signature verification logic
     secret_key = GlobalConfigService.load('VK_SECRET_KEY', '')
     return head :unauthorized if secret_key.blank?
     
-    # Implement VK signature verification
+    # VK signature verification
     # https://dev.vk.com/api/callback/getting-started#Проверка%20подлинности
+    request_body = request.raw_post
+    signature = request.headers['X-VK-Signature']
+    
+    expected_signature = Digest::SHA256.hexdigest(secret_key + request_body)
+    
+    head :unauthorized unless ActiveSupport::SecurityUtils.secure_compare(signature, expected_signature)
+  end
+
+  def valid_verify_token?
+    params['hub.verify_token'] == GlobalConfigService.load('VK_VERIFY_TOKEN', '')
   end
 
   def confirmation_token
-    # Return group-specific confirmation token
     group_id = params['group_id']
     channel = Channel::Vk.find_by(group_id: group_id)
     channel&.confirmation_token || GlobalConfigService.load('VK_CONFIRMATION_TOKEN', '')
@@ -206,12 +211,26 @@ end
 
 ```ruby
 # app/jobs/webhooks/vk_events_job.rb
-class Webhooks::VkEventsJob < ApplicationJob
+class Webhooks::VkEventsJob < MutexApplicationJob
   queue_as :default
+  retry_on LockAcquisitionError, wait: 1.second, attempts: 8
+
+  SUPPORTED_EVENTS = [:message_new, :message_reply].freeze
 
   def perform(event_data)
     @event_data = event_data.with_indifferent_access
     
+    group_id = @event_data['group_id']
+    key = format(::Redis::Alfred::VK_MESSAGE_MUTEX, group_id: group_id)
+    
+    with_lock(key) do
+      process_event
+    end
+  end
+
+  private
+
+  def process_event
     case @event_data['type']
     when 'message_new'
       process_incoming_message
@@ -222,14 +241,14 @@ class Webhooks::VkEventsJob < ApplicationJob
     end
   end
 
-  private
-
   def process_incoming_message
     message_data = @event_data['object']['message']
     group_id = @event_data['group_id']
     
     channel = Channel::Vk.find_by(group_id: group_id)
     return unless channel
+
+    return if channel.reauthorization_required?
     
     Vk::MessageTextService.new(message_data, channel).perform
   end
@@ -237,6 +256,14 @@ class Webhooks::VkEventsJob < ApplicationJob
   def process_outgoing_message
     # Handle outgoing message confirmations
     # Update message status, handle delivery receipts
+    message_data = @event_data['object']['message']
+    group_id = @event_data['group_id']
+    
+    channel = Channel::Vk.find_by(group_id: group_id)
+    return unless channel
+
+    # Find and update message status if needed
+    Rails.logger.info("VK outgoing message confirmation: #{message_data['id']}")
   end
 end
 ```
@@ -245,12 +272,13 @@ end
 
 ```ruby
 # app/services/vk/message_text_service.rb
-class Vk::MessageTextService
+class Vk::MessageTextService < Vk::BaseService
   attr_reader :message_data, :channel
 
   def initialize(message_data, channel)
     @message_data = message_data
     @channel = channel
+    super(channel)
   end
 
   def perform
@@ -263,12 +291,13 @@ class Vk::MessageTextService
   private
 
   def valid_message?
-    message_data['from_id'].present? && message_data['text'].present?
+    message_data['from_id'].present? && 
+      message_data['text'].present? &&
+      message_data['from_id'] != channel.group_id.to_i # Skip messages from the group itself
   end
 
   def ensure_contact_inbox
     vk_user_id = message_data['from_id']
-    return if vk_user_id == channel.group_id.to_i # Skip messages from the group itself
     
     @contact_inbox = channel.inbox.contact_inboxes.find_by(source_id: vk_user_id.to_s)
     
@@ -279,17 +308,26 @@ class Vk::MessageTextService
   end
 
   def fetch_user_info(user_id)
-    # Call VK API to get user information
-    response = vk_api_client.users.get(
-      user_ids: user_id,
-      fields: 'first_name,last_name,photo_200'
+    response = HTTParty.get(
+      'https://api.vk.com/method/users.get',
+      query: {
+        user_ids: user_id,
+        fields: 'first_name,last_name,photo_200',
+        access_token: channel.access_token,
+        v: GlobalConfigService.load('VK_API_VERSION', '5.131')
+      }
     )
     
-    user = response.first
-    {
-      name: "#{user['first_name']} #{user['last_name']}".strip,
-      avatar_url: user['photo_200']
-    }
+    if response.success? && response.parsed_response['response'].present?
+      user = response.parsed_response['response'].first
+      {
+        name: "#{user['first_name']} #{user['last_name']}".strip,
+        avatar_url: user['photo_200']
+      }
+    else
+      handle_api_error(response)
+      { name: "VK User #{user_id}" }
+    end
   rescue StandardError => e
     Rails.logger.error("Failed to fetch VK user info: #{e.message}")
     { name: "VK User #{user_id}" }
@@ -299,12 +337,18 @@ class Vk::MessageTextService
     Messages::Vk::MessageBuilder.new(message_data, channel.inbox).perform
   end
 
-  def vk_api_client
-    @vk_api_client ||= VK::Application.new(
-      app_id: GlobalConfigService.load('VK_APP_ID', ''),
-      app_secret: GlobalConfigService.load('VK_APP_SECRET', ''),
-      access_token: channel.access_token
-    )
+  def handle_api_error(response)
+    error = response.parsed_response&.dig('error')
+    return unless error
+
+    error_code = error['error_code']
+    
+    # Handle token expiration
+    if error_code == 5 # User authorization failed
+      channel.authorization_error!
+    end
+    
+    Rails.logger.error("VK API Error: #{error['error_msg']} (Code: #{error_code})")
   end
 end
 ```
@@ -323,18 +367,23 @@ class Vk::SendOnVkService < Base::SendOnChannelService
   def perform_reply
     send_text_message if message.content.present?
     send_attachments if message.attachments.present?
+  rescue StandardError => e
+    handle_vk_error(e)
   end
 
   def send_text_message
-    response = vk_api_client.messages.send(
-      peer_id: contact.get_source_id(inbox.id),
-      message: message.content,
-      random_id: generate_random_id
+    response = HTTParty.post(
+      'https://api.vk.com/method/messages.send',
+      body: {
+        peer_id: contact.get_source_id(inbox.id),
+        message: message.content,
+        random_id: generate_random_id,
+        access_token: channel.access_token,
+        v: GlobalConfigService.load('VK_API_VERSION', '5.131')
+      }
     )
     
-    message.update!(source_id: response.to_s) if response
-  rescue StandardError => e
-    handle_vk_error(e)
+    handle_send_response(response)
   end
 
   def send_attachments
@@ -345,15 +394,55 @@ class Vk::SendOnVkService < Base::SendOnChannelService
 
   def send_attachment(attachment)
     # Upload attachment to VK and send
-    # Implementation depends on attachment type
+    case attachment.file_type
+    when 'image'
+      send_photo_attachment(attachment)
+    when 'file'
+      send_document_attachment(attachment)
+    else
+      Rails.logger.warn("Unsupported VK attachment type: #{attachment.file_type}")
+    end
   end
 
-  def vk_api_client
-    @vk_api_client ||= VK::Application.new(
-      app_id: GlobalConfigService.load('VK_APP_ID', ''),
-      app_secret: GlobalConfigService.load('VK_APP_SECRET', ''),
-      access_token: channel.access_token
-    )
+  def send_photo_attachment(attachment)
+    # VK photo upload process is complex, implement as needed
+    Rails.logger.info("Sending VK photo attachment: #{attachment.id}")
+  end
+
+  def send_document_attachment(attachment)
+    # VK document upload process
+    Rails.logger.info("Sending VK document attachment: #{attachment.id}")
+  end
+
+  def handle_send_response(response)
+    if response.success?
+      parsed_response = response.parsed_response
+      
+      if parsed_response['error']
+        handle_api_error(parsed_response['error'])
+      elsif parsed_response['response']
+        message.update!(source_id: parsed_response['response'].to_s)
+        Messages::StatusUpdateService.new(message, 'sent').perform
+      end
+    else
+      Messages::StatusUpdateService.new(message, 'failed', 'HTTP Error').perform
+    end
+  end
+
+  def handle_api_error(error)
+    error_code = error['error_code']
+    error_msg = error['error_msg']
+    
+    case error_code
+    when 5 # User authorization failed
+      channel.authorization_error!
+    when 7 # Permission to perform this action is denied
+      Rails.logger.error("VK permission denied: #{error_msg}")
+    when 901 # Can't send messages for users without permission
+      Rails.logger.warn("VK user blocked messages: #{error_msg}")
+    end
+    
+    Messages::StatusUpdateService.new(message, 'failed', error_msg).perform
   end
 
   def generate_random_id
@@ -362,12 +451,6 @@ class Vk::SendOnVkService < Base::SendOnChannelService
 
   def handle_vk_error(error)
     Rails.logger.error("VK send error: #{error.message}")
-    
-    # Handle specific VK errors
-    if error.message.include?('access_token')
-      channel.authorization_error!
-    end
-    
     Messages::StatusUpdateService.new(message, 'failed', error.message).perform
   end
 end
@@ -384,6 +467,8 @@ class Vk::CallbacksController < ApplicationController
     return handle_error if params[:error].present?
     
     process_authorization
+  rescue StandardError => e
+    handle_error(e)
   end
 
   private
@@ -404,287 +489,127 @@ class Vk::CallbacksController < ApplicationController
   end
 
   def exchange_code_for_token(code)
-    # Implement VK OAuth token exchange
-    # https://dev.vk.com/api/access-token/authcode-flow-user
+    response = HTTParty.post(
+      'https://oauth.vk.com/access_token',
+      body: {
+        client_id: vk_app_id,
+        client_secret: vk_app_secret,
+        redirect_uri: vk_callback_url,
+        code: code
+      }
+    )
+    
+    if response.success?
+      response.parsed_response
+    else
+      raise "Token exchange failed: #{response.body}"
+    end
   end
 
   def fetch_group_info(access_token)
-    # Fetch group/community information
+    response = HTTParty.get(
+      'https://api.vk.com/method/groups.getById',
+      query: {
+        access_token: access_token,
+        v: GlobalConfigService.load('VK_API_VERSION', '5.131')
+      }
+    )
+    
+    if response.success? && response.parsed_response['response']
+      response.parsed_response['response'].first
+    else
+      raise "Failed to fetch group info: #{response.body}"
+    end
   end
 
   def find_or_create_channel(token_response, group_info)
-    # Create or update VK channel
+    existing_channel = Channel::Vk.find_by(
+      group_id: group_info['id'].to_s,
+      account: current_user.account
+    )
+    
+    if existing_channel
+      existing_channel.update!(
+        access_token: token_response['access_token'],
+        group_name: group_info['name']
+      )
+      existing_channel
+    else
+      Channel::Vk.create!(
+        account: current_user.account,
+        access_token: token_response['access_token'],
+        group_id: group_info['id'].to_s,
+        group_name: group_info['name'],
+        confirmation_token: SecureRandom.hex(16)
+      )
+    end
+  end
+
+  def create_or_update_inbox(channel, group_info)
+    return if channel.inbox.present?
+    
+    current_user.account.inboxes.create!(
+      account: current_user.account,
+      channel: channel,
+      name: group_info['name']
+    )
+  end
+
+  def handle_error(error = nil)
+    error_message = error&.message || params[:error_description] || 'Authorization failed'
+    
+    Rails.logger.error("VK authorization error: #{error_message}")
+    
+    redirect_to app_new_vk_inbox_url(
+      account_id: current_user.account_id,
+      error_message: error_message
+    )
   end
 end
 ```
 
-## Python Microservice Implementation
+### 7. VK Concern
 
-### Architecture
+```ruby
+# app/controllers/concerns/vk_concern.rb
+module VkConcern
+  extend ActiveSupport::Concern
 
-```
-vk-service/
-├── app/
-│   ├── main.py                 # FastAPI application
-│   ├── models/
-│   │   ├── vk_client.py        # VK API client wrapper
-│   │   └── message.py          # Message models
-│   ├── services/
-│   │   ├── webhook_service.py  # Handle VK webhooks
-│   │   ├── message_service.py  # Process messages
-│   │   └── chatwoot_service.py # Communicate with Chatwoot
-│   └── config.py               # Configuration
-├── requirements.txt
-└── Dockerfile
-```
-
-### 1. FastAPI Application
-
-```python
-# vk-service/app/main.py
-from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
-import vk_api
-import httpx
-import hashlib
-import hmac
-from typing import Dict, Any
-
-app = FastAPI()
-
-class VKWebhookEvent(BaseModel):
-    type: str
-    object: Dict[Any, Any] = None
-    group_id: int
-    event_id: str = None
-    v: str = None
-    secret: str = None
-
-@app.post("/vk/webhook/{group_id}")
-async def handle_vk_webhook(group_id: int, event: VKWebhookEvent):
-    # Verify signature
-    if not verify_signature(event):
-        raise HTTPException(status_code=401, detail="Invalid signature")
+  def vk_authorization_url(state)
+    params = {
+      client_id: vk_app_id,
+      redirect_uri: vk_callback_url,
+      scope: 'messages,groups',
+      response_type: 'code',
+      state: state,
+      v: GlobalConfigService.load('VK_API_VERSION', '5.131')
+    }
     
-    if event.type == "confirmation":
-        # Return confirmation token for group
-        return await get_confirmation_token(group_id)
-    
-    elif event.type in ["message_new", "message_reply"]:
-        # Process message
-        await process_message(event)
-        return {"ok": True}
-    
-    return {"ok": True}
+    "https://oauth.vk.com/authorize?#{params.to_query}"
+  end
 
-async def verify_signature(event: VKWebhookEvent) -> bool:
-    # Implement VK signature verification
-    pass
+  private
 
-async def get_confirmation_token(group_id: int) -> str:
-    # Get confirmation token from Chatwoot or config
-    pass
+  def vk_app_id
+    GlobalConfigService.load('VK_APP_ID', '')
+  end
 
-async def process_message(event: VKWebhookEvent):
-    # Process the message and send to Chatwoot
-    message_service = MessageService()
-    await message_service.process_vk_message(event)
-```
+  def vk_app_secret
+    GlobalConfigService.load('VK_APP_SECRET', '')
+  end
 
-### 2. VK Client Wrapper
-
-```python
-# vk-service/app/models/vk_client.py
-import vk_api
-from vk_api.longpoll import VkLongPoll, VkEventType
-import logging
-
-class VKClient:
-    def __init__(self, access_token: str, group_id: int):
-        self.access_token = access_token
-        self.group_id = group_id
-        self.session = vk_api.VkApi(token=access_token)
-        self.api = self.session.get_api()
-        self.longpoll = VkLongPoll(self.session, group_id=group_id)
-    
-    def send_message(self, peer_id: int, message: str, attachments=None):
-        """Send message to VK user"""
-        try:
-            return self.api.messages.send(
-                peer_id=peer_id,
-                message=message,
-                random_id=vk_api.utils.get_random_id(),
-                attachment=attachments
-            )
-        except Exception as e:
-            logging.error(f"Failed to send VK message: {e}")
-            raise
-    
-    def get_user_info(self, user_id: int):
-        """Get user information"""
-        try:
-            users = self.api.users.get(
-                user_ids=[user_id],
-                fields='first_name,last_name,photo_200'
-            )
-            return users[0] if users else None
-        except Exception as e:
-            logging.error(f"Failed to get VK user info: {e}")
-            return None
-    
-    def upload_photo(self, photo_path: str):
-        """Upload photo for messaging"""
-        upload = vk_api.VkUpload(self.session)
-        return upload.photo_messages(photo_path)
-```
-
-### 3. Message Processing Service
-
-```python
-# vk-service/app/services/message_service.py
-import httpx
-from app.models.vk_client import VKClient
-from app.services.chatwoot_service import ChatwootService
-import logging
-
-class MessageService:
-    def __init__(self):
-        self.chatwoot = ChatwootService()
-    
-    async def process_vk_message(self, event):
-        """Process incoming VK message and send to Chatwoot"""
-        message_data = event.object.get('message', {})
-        group_id = event.group_id
-        
-        # Get channel configuration from Chatwoot
-        channel_config = await self.chatwoot.get_vk_channel(group_id)
-        if not channel_config:
-            logging.warning(f"No channel config found for VK group {group_id}")
-            return
-        
-        # Create VK client
-        vk_client = VKClient(channel_config['access_token'], group_id)
-        
-        # Get user information
-        user_id = message_data.get('from_id')
-        if user_id == group_id:  # Skip messages from the group itself
-            return
-            
-        user_info = vk_client.get_user_info(user_id)
-        
-        # Prepare message for Chatwoot
-        chatwoot_message = {
-            'source_id': str(user_id),
-            'content': message_data.get('text', ''),
-            'message_type': 'incoming',
-            'external_id': str(message_data.get('id')),
-            'timestamp': message_data.get('date'),
-            'contact': {
-                'name': f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}".strip() if user_info else f"VK User {user_id}",
-                'avatar_url': user_info.get('photo_200') if user_info else None
-            }
-        }
-        
-        # Send to Chatwoot
-        await self.chatwoot.create_message(channel_config['inbox_id'], chatwoot_message)
-    
-    async def send_to_vk(self, channel_config, recipient_id, content, attachments=None):
-        """Send message from Chatwoot to VK"""
-        vk_client = VKClient(channel_config['access_token'], channel_config['group_id'])
-        
-        try:
-            message_id = vk_client.send_message(
-                peer_id=int(recipient_id),
-                message=content,
-                attachments=attachments
-            )
-            return {'success': True, 'message_id': message_id}
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
-```
-
-### 4. Chatwoot Service
-
-```python
-# vk-service/app/services/chatwoot_service.py
-import httpx
-import os
-from typing import Dict, Optional
-
-class ChatwootService:
-    def __init__(self):
-        self.base_url = os.getenv('CHATWOOT_URL', 'http://localhost:3000')
-        self.api_key = os.getenv('CHATWOOT_API_KEY')
-        self.headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self.api_key}'
-        }
-    
-    async def get_vk_channel(self, group_id: int) -> Optional[Dict]:
-        """Get VK channel configuration from Chatwoot"""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/api/v1/vk/channels/{group_id}",
-                headers=self.headers
-            )
-            return response.json() if response.status_code == 200 else None
-    
-    async def create_message(self, inbox_id: int, message_data: Dict):
-        """Create message in Chatwoot inbox"""
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.base_url}/api/v1/inboxes/{inbox_id}/messages",
-                json=message_data,
-                headers=self.headers
-            )
-            return response.json() if response.status_code == 200 else None
-    
-    async def send_message(self, message_id: int, status: str, external_id: str = None):
-        """Update message status in Chatwoot"""
-        async with httpx.AsyncClient() as client:
-            await client.patch(
-                f"{self.base_url}/api/v1/messages/{message_id}",
-                json={
-                    'status': status,
-                    'external_id': external_id
-                },
-                headers=self.headers
-            )
+  def vk_callback_url
+    Rails.application.routes.url_helpers.vk_callback_url(
+      protocol: Rails.application.config.force_ssl ? 'https' : 'http',
+      host: ENV.fetch('FRONTEND_URL', 'localhost:3000').gsub(/https?:\/\//, '')
+    )
+  end
+end
 ```
 
 ## Database Schema
 
 ### VK Channel Table
-
-```sql
--- Migration: db/migrate/add_vk_channel.rb
-CREATE TABLE channel_vk (
-    id BIGSERIAL PRIMARY KEY,
-    account_id INTEGER NOT NULL,
-    access_token VARCHAR NOT NULL,
-    group_id VARCHAR NOT NULL,
-    group_name VARCHAR,
-    confirmation_token VARCHAR,
-    webhook_url VARCHAR,
-    expires_at TIMESTAMP,
-    authorization_error_count INTEGER DEFAULT 0,
-    reauthorization_required BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_channel_vk_account
-        FOREIGN KEY (account_id) REFERENCES accounts(id)
-        ON DELETE CASCADE,
-    
-    CONSTRAINT unique_vk_group_per_account
-        UNIQUE (account_id, group_id)
-);
-
-CREATE INDEX idx_channel_vk_group_id ON channel_vk(group_id);
-CREATE INDEX idx_channel_vk_account_id ON channel_vk(account_id);
-```
-
-### Rails Migration
 
 ```ruby
 # db/migrate/20240101000000_add_vk_channel.rb
@@ -694,10 +619,8 @@ class AddVkChannel < ActiveRecord::Migration[7.1]
       t.integer :account_id, null: false
       t.string :access_token, null: false
       t.string :group_id, null: false
-      t.string :group_name
+      t.string :group_name, null: false
       t.string :confirmation_token
-      t.string :webhook_url
-      t.datetime :expires_at
       t.integer :authorization_error_count, default: 0
       t.boolean :reauthorization_required, default: false
       t.timestamps
@@ -722,54 +645,14 @@ end
 2. **Required Permissions (Scopes)**
    - `messages` - Send and receive messages
    - `groups` - Manage group messages
-   - `offline` - Long-term access token
 
-### OAuth Flow Implementation
+### OAuth Flow Steps
 
-```ruby
-# app/controllers/concerns/vk_concern.rb
-module VkConcern
-  extend ActiveSupport::Concern
-
-  def vk_oauth_client
-    OAuth2::Client.new(
-      vk_app_id,
-      vk_app_secret,
-      {
-        site: 'https://oauth.vk.com',
-        authorize_url: '/authorize',
-        token_url: '/access_token'
-      }
-    )
-  end
-
-  def vk_authorization_url(state)
-    vk_oauth_client.auth_code.authorize_url(
-      redirect_uri: vk_callback_url,
-      scope: 'messages,groups,offline',
-      state: state,
-      v: '5.131'
-    )
-  end
-
-  private
-
-  def vk_app_id
-    GlobalConfigService.load('VK_APP_ID', '')
-  end
-
-  def vk_app_secret
-    GlobalConfigService.load('VK_APP_SECRET', '')
-  end
-
-  def vk_callback_url
-    Rails.application.routes.url_helpers.vk_callback_url(
-      protocol: Rails.application.config.force_ssl ? 'https' : 'http',
-      host: ENV.fetch('FRONTEND_URL', 'localhost:3000').gsub(/https?:\/\//, '')
-    )
-  end
-end
-```
+1. **Authorization Request** - Redirect user to VK OAuth
+2. **Callback Handling** - Process authorization code
+3. **Token Exchange** - Get access token
+4. **Group Information** - Fetch VK group details
+5. **Channel Creation** - Create Chatwoot channel and inbox
 
 ## Webhook Implementation
 
@@ -785,44 +668,77 @@ class Vk::WebhookService
   end
 
   def setup
-    response = vk_api_client.groups.setCallbackSettings(
-      group_id: channel.group_id,
-      server_id: get_or_create_server_id,
-      message_new: 1,
-      message_reply: 1,
-      message_edit: 1
-    )
-
-    Rails.logger.info("VK webhook configured: #{response}")
+    # Add callback server
+    server_id = add_callback_server
+    
+    # Configure callback settings
+    configure_callback_settings(server_id)
+    
+    Rails.logger.info("VK webhook configured for group #{channel.group_id}")
   end
 
   def remove
-    servers = vk_api_client.groups.getCallbackServers(group_id: channel.group_id)
+    servers = get_callback_servers
     
-    servers['items'].each do |server|
-      vk_api_client.groups.deleteCallbackServer(
-        group_id: channel.group_id,
-        server_id: server['id']
-      )
+    servers.each do |server|
+      delete_callback_server(server['id']) if server['url'] == webhook_url
     end
+    
+    Rails.logger.info("VK webhook removed for group #{channel.group_id}")
   end
 
   private
 
-  def get_or_create_server_id
-    servers = vk_api_client.groups.getCallbackServers(group_id: channel.group_id)
-    
-    existing_server = servers['items'].find { |s| s['url'] == webhook_url }
-    return existing_server['id'] if existing_server
-
-    response = vk_api_client.groups.addCallbackServer(
+  def add_callback_server
+    response = api_request('groups.addCallbackServer', {
       group_id: channel.group_id,
       url: webhook_url,
       title: 'Chatwoot Integration',
       secret_key: webhook_secret_key
-    )
-
+    })
+    
     response['server_id']
+  end
+
+  def configure_callback_settings(server_id)
+    api_request('groups.setCallbackSettings', {
+      group_id: channel.group_id,
+      server_id: server_id,
+      message_new: 1,
+      message_reply: 1
+    })
+  end
+
+  def get_callback_servers
+    response = api_request('groups.getCallbackServers', {
+      group_id: channel.group_id
+    })
+    
+    response['items'] || []
+  end
+
+  def delete_callback_server(server_id)
+    api_request('groups.deleteCallbackServer', {
+      group_id: channel.group_id,
+      server_id: server_id
+    })
+  end
+
+  def api_request(method, params)
+    response = HTTParty.get(
+      "https://api.vk.com/method/#{method}",
+      query: params.merge(
+        access_token: channel.access_token,
+        v: GlobalConfigService.load('VK_API_VERSION', '5.131')
+      )
+    )
+    
+    if response.success? && response.parsed_response['response']
+      response.parsed_response['response']
+    else
+      error = response.parsed_response['error']
+      raise "VK API Error: #{error['error_msg']} (#{error['error_code']})"
+    end
   end
 
   def webhook_url
@@ -834,14 +750,6 @@ class Vk::WebhookService
 
   def webhook_secret_key
     GlobalConfigService.load('VK_WEBHOOK_SECRET', '')
-  end
-
-  def vk_api_client
-    @vk_api_client ||= VK::Application.new(
-      app_id: GlobalConfigService.load('VK_APP_ID', ''),
-      app_secret: GlobalConfigService.load('VK_APP_SECRET', ''),
-      access_token: channel.access_token
-    )
   end
 end
 ```
@@ -877,34 +785,28 @@ VK_WEBHOOK_SECRET=your_webhook_secret_key
 
 # VK API Configuration
 VK_API_VERSION=5.131
+VK_VERIFY_TOKEN=your_verify_token
 VK_CONFIRMATION_TOKEN=default_confirmation_token
 
 # Chatwoot Configuration
 FRONTEND_URL=https://your-chatwoot-instance.com
 ```
 
-### Optional Configuration
-
-```bash
-# Feature Flags
-ENABLE_VK_CHANNEL=true
-VK_RATE_LIMIT_REQUESTS_PER_SECOND=20
-
-# Python Microservice (if using)
-VK_SERVICE_URL=http://vk-service:8000
-CHATWOOT_API_KEY=your_api_key
-```
-
-### Global Configuration
+### Routes Configuration
 
 ```ruby
-# Add to config/initializers/vk.rb
-Rails.application.configure do
-  config.vk = ActiveSupport::OrderedOptions.new
-  config.vk.app_id = ENV['VK_APP_ID']
-  config.vk.app_secret = ENV['VK_APP_SECRET']
-  config.vk.api_version = ENV.fetch('VK_API_VERSION', '5.131')
-  config.vk.webhook_secret = ENV['VK_WEBHOOK_SECRET']
+# config/routes.rb additions
+Rails.application.routes.draw do
+  # VK webhook routes
+  get 'webhooks/vk', to: 'webhooks/vk#verify'
+  post 'webhooks/vk', to: 'webhooks/vk#events'
+  
+  # VK OAuth callback
+  get 'vk/callback', to: 'vk/callbacks#show'
+  
+  # VK inbox routes
+  get 'app/accounts/:account_id/settings/inboxes/new/vk', to: 'dashboard#index', as: 'app_new_vk_inbox'
+  get 'app/accounts/:account_id/settings/inboxes/new/:inbox_id/agents', to: 'dashboard#index', as: 'app_vk_inbox_agents'
 end
 ```
 
@@ -912,21 +814,21 @@ end
 
 ### 1. Token Security
 - Store access tokens encrypted in database
-- Implement token rotation for long-lived tokens
+- Implement token validation and refresh mechanisms
 - Use secure random generation for webhook secrets
 
 ### 2. Webhook Verification
 ```ruby
-def verify_vk_signature(data, signature, secret_key)
-  expected_signature = Digest::SHA256.hexdigest("#{data}#{secret_key}")
+def verify_vk_signature(request_body, signature, secret_key)
+  expected_signature = Digest::SHA256.hexdigest(secret_key + request_body)
   ActiveSupport::SecurityUtils.secure_compare(signature, expected_signature)
 end
 ```
 
 ### 3. Rate Limiting
-- Implement rate limiting for VK API calls (20 requests/second)
-- Use Redis-based rate limiting
+- Implement rate limiting for VK API calls
 - Handle VK API rate limit responses gracefully
+- Use exponential backoff for retries
 
 ### 4. Data Privacy
 - Implement data retention policies
@@ -943,12 +845,18 @@ RSpec.describe Channel::Vk do
   describe 'validations' do
     it { should validate_presence_of(:access_token) }
     it { should validate_presence_of(:group_id) }
+    it { should validate_presence_of(:group_name) }
     it { should validate_uniqueness_of(:group_id).scoped_to(:account_id) }
+  end
+
+  describe 'associations' do
+    it { should belong_to(:account) }
+    it { should have_one(:inbox) }
   end
 
   describe 'callbacks' do
     it 'sets up webhook after creation' do
-      expect(Vk::WebhookService).to receive_service_call.with(any_args)
+      expect(Vk::WebhookService).to receive(:new).and_call_original
       create(:channel_vk)
     end
   end
@@ -960,32 +868,37 @@ end
 ```ruby
 # spec/controllers/webhooks/vk_controller_spec.rb
 RSpec.describe Webhooks::VkController do
+  let(:channel) { create(:channel_vk) }
+  
   describe 'POST #events' do
     context 'with confirmation event' do
       it 'returns confirmation token' do
-        post :events, params: { type: 'confirmation', group_id: 12345 }
-        expect(response.body).to eq('confirmation_token')
+        post :events, params: { type: 'confirmation', group_id: channel.group_id }
+        expect(response.body).to eq(channel.confirmation_token)
       end
     end
 
     context 'with message_new event' do
+      let(:message_params) do
+        {
+          type: 'message_new',
+          group_id: channel.group_id,
+          object: {
+            message: {
+              id: 123,
+              from_id: 456,
+              text: 'Hello from VK',
+              date: Time.current.to_i
+            }
+          }
+        }
+      end
+
       it 'queues VK events job' do
         expect(Webhooks::VkEventsJob).to receive(:perform_later)
-        post :events, params: vk_message_params
+        post :events, params: message_params
       end
     end
-  end
-end
-```
-
-### 3. VK API Mock
-
-```ruby
-# spec/support/vk_api_mock.rb
-class VkApiMock
-  def self.setup
-    WebMock.stub_request(:post, /api\.vk\.com/)
-      .to_return(status: 200, body: { response: {} }.to_json)
   end
 end
 ```
@@ -995,8 +908,8 @@ end
 ### 1. Ruby Implementation Deployment
 
 ```bash
-# Add VK gem to Gemfile
-echo 'gem "vk-ruby"' >> Gemfile
+# Add to Gemfile
+echo 'gem "httparty"' >> Gemfile
 bundle install
 
 # Run migration
@@ -1011,102 +924,58 @@ export VK_WEBHOOK_SECRET=your_secret
 systemctl restart chatwoot
 ```
 
-### 2. Python Microservice Deployment
+### 2. Redis Keys Configuration
 
-```dockerfile
-# vk-service/Dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY app/ ./app/
-
-EXPOSE 8000
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-```yaml
-# docker-compose.yml addition
-services:
-  vk-service:
-    build: ./vk-service
-    ports:
-      - "8000:8000"
-    environment:
-      - CHATWOOT_URL=http://chatwoot:3000
-      - CHATWOOT_API_KEY=${CHATWOOT_API_KEY}
-      - VK_APP_ID=${VK_APP_ID}
-      - VK_APP_SECRET=${VK_APP_SECRET}
-    depends_on:
-      - chatwoot
-```
-
-### 3. Routes Configuration
+Add VK-specific Redis keys:
 
 ```ruby
-# config/routes.rb additions
-Rails.application.routes.draw do
-  # VK webhook routes
-  get 'webhooks/vk', to: 'webhooks/vk#verify'
-  post 'webhooks/vk', to: 'webhooks/vk#events'
-  
-  # VK OAuth callback
-  get 'vk/callback', to: 'vk/callbacks#show'
-  
-  # VK API routes (for Python service integration)
-  namespace :api, defaults: { format: 'json' } do
-    namespace :v1 do
-      resources :vk_channels, only: [:show, :create, :update, :destroy]
-      post 'vk/send_message', to: 'vk#send_message'
-    end
-  end
+# lib/redis/redis_keys.rb
+module Redis::Alfred
+  # ... existing keys
+  VK_MESSAGE_MUTEX = 'vk:message_mutex:%{group_id}'.freeze
 end
 ```
 
-### 4. Monitoring & Logging
+### 3. Monitoring & Logging
 
 ```ruby
-# Add to application.rb
-config.log_tags = [:request_id, :remote_ip]
-
-# VK-specific logging
+# Add VK-specific logging
 Rails.logger.tagged('VK') do |logger|
   logger.info 'VK webhook received'
 end
 ```
 
-### 5. Health Checks
+### 4. Health Checks
 
 ```ruby
 # app/controllers/health_controller.rb
-class HealthController < ApplicationController
-  def vk
-    # Check VK API connectivity
-    vk_client = VK::Application.new(token: 'test_token')
-    
-    begin
-      vk_client.users.get(user_ids: 1)
-      render json: { status: 'healthy', service: 'vk' }
-    rescue StandardError => e
-      render json: { status: 'unhealthy', service: 'vk', error: e.message }, status: 503
-    end
+def vk
+  # Check VK API connectivity
+  response = HTTParty.get(
+    'https://api.vk.com/method/users.get',
+    query: {
+      user_ids: 1,
+      access_token: 'test_token',
+      v: '5.131'
+    }
+  )
+  
+  if response.success?
+    render json: { status: 'healthy', service: 'vk' }
+  else
+    render json: { status: 'unhealthy', service: 'vk' }, status: 503
   end
 end
 ```
 
 ## Conclusion
 
-This technical solution provides comprehensive guidance for integrating VK.com into Chatwoot's inbox system. The Ruby implementation is recommended for consistency with Chatwoot's architecture, while the Python microservice approach offers flexibility for teams preferring Python's mature VK ecosystem.
+This Ruby implementation guide provides a comprehensive solution for integrating VK.com into Chatwoot following the established patterns of Facebook and Instagram integrations. The implementation ensures:
 
-Key implementation considerations:
-- Follow Chatwoot's established channel patterns
-- Implement robust error handling and rate limiting
-- Ensure secure token management and webhook verification
-- Provide comprehensive testing coverage
-- Plan for scalable deployment and monitoring
+- **Consistency** with existing Chatwoot channel patterns
+- **Robust error handling** and reauthorization support  
+- **Secure token management** and webhook verification
+- **Comprehensive testing** coverage
+- **Scalable architecture** for production deployment
 
-The solution supports both VK Communities (recommended) and personal messaging, with proper OAuth flow, webhook handling, and message synchronization between VK and Chatwoot platforms.
+The solution supports VK Communities with proper OAuth flow, webhook handling, and bidirectional message synchronization between VK and Chatwoot platforms, maintaining the same user experience as other social media integrations.
