@@ -13,8 +13,13 @@ class Api::V1::Accounts::Vk::AuthorizationsController < Api::V1::Accounts::BaseC
   private
 
   def encode_state(account_id)
-    # Simple state encoding to verify the callback
-    # In production, consider using JWT or similar for better security
-    Base64.urlsafe_encode64(account_id.to_s)
+    # Create secure state parameter with timestamp and account ID
+    # Include timestamp to prevent replay attacks
+    timestamp = Time.current.to_i
+    data = "#{account_id}:#{timestamp}"
+    
+    # Sign the data with Rails secret to prevent tampering
+    verifier = ActiveSupport::MessageVerifier.new(Rails.application.secrets.secret_key_base)
+    verifier.generate(data)
   end
 end

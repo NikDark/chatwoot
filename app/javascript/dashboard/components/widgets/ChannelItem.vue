@@ -20,6 +20,9 @@ export default {
     hasInstagramConfigured() {
       return window.chatwootConfig?.instagramAppId;
     },
+    hasVkConfigured() {
+      return window.chatwootConfig?.vkAppId;
+    },
     isActive() {
       const { key } = this.channel;
       if (Object.keys(this.enabledFeatures).length === 0) {
@@ -41,6 +44,10 @@ export default {
         );
       }
 
+      if (key === 'vk') {
+        return this.hasVkConfigured;
+      }
+
       if (key === 'voice') {
         return this.enabledFeatures.channel_voice;
       }
@@ -54,6 +61,7 @@ export default {
         'telegram',
         'line',
         'instagram',
+        'vk',
         'voice',
       ].includes(key);
     },

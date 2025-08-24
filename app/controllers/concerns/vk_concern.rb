@@ -5,13 +5,13 @@ module VkConcern
     params = {
       client_id: vk_app_id,
       redirect_uri: vk_callback_url,
-      scope: 'messages,groups',
+      scope: 'groups,messages',
       response_type: 'code',
       state: state,
       v: GlobalConfigService.load('VK_API_VERSION', '5.131')
     }
     
-    "https://oauth.vk.com/authorize?#{params.to_query}"
+    "https://id.vk.com/auth?#{params.to_query}"
   end
 
   private

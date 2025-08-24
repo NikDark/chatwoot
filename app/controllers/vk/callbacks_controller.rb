@@ -13,6 +13,10 @@ class Vk::CallbacksController < ApplicationController
 
   def process_authorization
     code = params[:code]
+    state = params[:state]
+    
+    # Validate state parameter for security
+    validate_state_parameter(state)
     
     token_response = exchange_code_for_token(code)
     group_info = fetch_group_info(token_response['access_token'])
@@ -28,12 +32,13 @@ class Vk::CallbacksController < ApplicationController
 
   def exchange_code_for_token(code)
     response = HTTParty.post(
-      'https://oauth.vk.com/access_token',
+      'https://id.vk.com/oauth2/auth',
       body: {
         client_id: vk_app_id,
         client_secret: vk_app_secret,
         redirect_uri: vk_callback_url,
-        code: code
+        code: code,
+        grant_type: 'authorization_code'
       }
     )
     
@@ -91,6 +96,33 @@ class Vk::CallbacksController < ApplicationController
       channel: channel,
       name: group_info['name']
     )
+  end
+
+  def validate_state_parameter(state)
+    return if state.blank?
+    
+    begin
+      verifier = ActiveSupport::MessageVerifier.new(Rails.application.secrets.secret_key_base)
+      data = verifier.verify(state)
+      
+      account_id_str, timestamp_str = data.split(':')
+      account_id = account_id_str.to_i
+      timestamp = timestamp_str.to_i
+      
+      # Check if state is for current user
+      if account_id != current_user.account_id
+        raise "State parameter account mismatch"
+      end
+      
+      # Check if state is not too old (1 hour limit)
+      if Time.current.to_i - timestamp > 3600
+        raise "State parameter expired"
+      end
+      
+    rescue StandardError => e
+      Rails.logger.error("VK state validation error: #{e.message}")
+      raise "Invalid state parameter"
+    end
   end
 
   def handle_error(error = nil)
