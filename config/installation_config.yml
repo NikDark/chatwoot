@@ -389,6 +389,33 @@
   locked: true
 # ------- End of Instagram Channel Related Config ------- #
 
+# ------- VK Channel Related Config ------- #
+- name: VK_APP_ID
+  display_title: 'VK App ID'
+  description: 'The App ID obtained from VK Developers'
+  locked: false
+- name: VK_APP_SECRET
+  display_title: 'VK App Secret'
+  description: 'The App Secret used for VK authentication'
+  locked: false
+  type: secret
+- name: VK_VERIFY_TOKEN
+  display_title: 'VK Verify Token'
+  description: 'The verify token used for VK Webhook verification'
+  locked: false
+  type: secret
+- name: VK_WEBHOOK_SECRET
+  display_title: 'VK Webhook Secret'
+  description: 'The secret key used for VK webhook signature verification'
+  locked: false
+  type: secret
+- name: VK_API_VERSION
+  display_title: 'VK API Version'
+  description: 'Configure this if you want to use a different VK API version'
+  value: '5.131'
+  locked: false
+# ------- End of VK Channel Related Config ------- #
+
 # ------- OG Image Related Config ------- #
 - name: OG_IMAGE_CDN_URL
   display_title: 'OG Image CDN URL'

@@ -53,7 +53,27 @@
         "ERROR_MESSAGE": "There was an error connecting to Instagram, please try again",
         "ERROR_AUTH": "There was an error connecting to Instagram, please try again",
         "NEW_INBOX_SUGGESTION": "This Instagram account was previously linked to a different inbox and has now been migrated here. All new messages will appear here. The old inbox will no longer be able to send or receive messages for this account.",
-        "DUPLICATE_INBOX_BANNER": "This Instagram account was migrated to the new Instagram channel inbox. You won’t be able to send/receive Instagram messages from this inbox anymore."
+        "DUPLICATE_INBOX_BANNER": "This Instagram account was migrated to the new Instagram channel inbox. You won't be able to send/receive Instagram messages from this inbox anymore."
+      },
+      "VK": {
+        "CONTINUE_WITH_VK": "Continue with VK",
+        "CONNECT_YOUR_VK_COMMUNITY": "Connect your VK Community",
+        "HELP": "To add your VK community as a channel, you need to authenticate by clicking 'Continue with VK'. This will allow you to receive and respond to messages from your VK community.",
+        "ERROR_MESSAGE": "There was an error connecting to VK, please try again",
+        "ERROR_AUTH": "Authentication failed. Please ensure your VK application is properly configured and try again.",
+        "CHOOSE_COMMUNITY": "Choose Community",
+        "CHOOSE_PLACEHOLDER": "Select a community from the list",
+        "INBOX_NAME": "Inbox Name",
+        "ADD_NAME": "Add a name for your inbox",
+        "PICK_NAME": "Pick a Name for your Inbox",
+        "PICK_A_VALUE": "Pick a value",
+        "CREATE_INBOX": "Create Inbox",
+        "LOADING_COMMUNITIES": "Loading VK communities...",
+        "NO_COMMUNITIES": "No VK communities found. Please ensure you have admin access to at least one VK community.",
+        "COMMUNITY_SELECTION_ERROR": "Please select a community to continue",
+        "REAUTHORIZATION_REQUIRED": "Your VK integration needs reauthorization. Click to reconnect.",
+        "REAUTHORIZATION_SUCCESS": "VK integration successfully reauthorized",
+        "REAUTHORIZATION_ERROR": "Failed to reauthorize VK integration"
       },
       "TWITTER": {
         "HELP": "To add your Twitter profile as a channel, you need to authenticate your Twitter Profile by clicking on 'Sign in with Twitter' ",
