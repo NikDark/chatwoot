@@ -7,6 +7,15 @@ class DeviseOverrides::OmniauthCallbacksController < DeviseTokenAuth::OmniauthCa
     @resource.present? ? sign_in_user : sign_up_user
   end
 
+  # VK ID specific callback method
+  def vk_id
+    omniauth_success
+  rescue StandardError => e
+    Rails.logger.error("VK ID OAuth Error: #{e.message}")
+    ChatwootExceptionTracker.new(e).capture_exception if defined?(ChatwootExceptionTracker)
+    redirect_to login_page_url(error: 'oauth-error')
+  end
+
   private
 
   def sign_in_user
@@ -66,9 +75,37 @@ class DeviseOverrides::OmniauthCallbacksController < DeviseTokenAuth::OmniauthCa
       user_full_name: auth_hash['info']['name'],
       email: auth_hash['info']['email'],
       locale: I18n.locale,
-      confirmed: auth_hash['info']['email_verified']
+      confirmed: auth_hash['info']['email_verified'] || auth_hash['provider'] == 'vk_id'
     ).perform
-    Avatar::AvatarFromUrlJob.perform_later(@resource, auth_hash['info']['image'])
+    
+    # Set avatar from provider
+    avatar_url = auth_hash['info']['image'] || auth_hash['info']['avatar']
+    Avatar::AvatarFromUrlJob.perform_later(@resource, avatar_url) if avatar_url.present?
+    
+    # Store VK ID specific data if available
+    store_provider_data if auth_hash['provider'] == 'vk_id'
+  end
+
+  def store_provider_data
+    return unless auth_hash['provider'] == 'vk_id'
+
+    # Store VK ID specific information
+    vk_attributes = @resource.custom_attributes || {}
+    vk_attributes['vk_id'] = {
+      access_token: auth_hash['credentials']['token'],
+      refresh_token: auth_hash['credentials']['refresh_token'],
+      id_token: auth_hash['extra']['id_token'],
+      expires_at: auth_hash['credentials']['expires_at'],
+      raw_info: auth_hash['extra']['raw_info']
+    }
+
+    @resource.update!(
+      provider: 'vk_id',
+      uid: auth_hash['uid'],
+      custom_attributes: vk_attributes
+    )
+  rescue StandardError => e
+    Rails.logger.error("Failed to store VK ID provider data: #{e.message}")
   end
 
   def default_devise_mapping
