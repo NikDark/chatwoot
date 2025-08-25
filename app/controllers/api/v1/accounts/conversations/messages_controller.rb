@@ -9,6 +9,11 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
     user = Current.user || @resource
     mb = Messages::MessageBuilder.new(user, @conversation, params)
     @message = mb.perform
+
+    # Explicitly return the created message payload with echo_id so the
+    # frontend can replace the pending message (status: progress) with
+    # the persisted one and update status to SENT immediately.
+    render json: @message.push_event_data
   rescue StandardError => e
     render_could_not_create_error(e.message)
   end

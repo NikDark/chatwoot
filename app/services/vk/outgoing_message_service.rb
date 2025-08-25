@@ -53,9 +53,10 @@ class Vk::OutgoingMessageService < Vk::BaseService
     @contact_inbox = @inbox.contact_inboxes.find_by(source_id: vk_user_id.to_s)
 
     if @contact_inbox.blank?
-      # If no contact inbox exists, we can't create outgoing message
-      Rails.logger.warn("VK outgoing message: no contact inbox found for user #{vk_user_id}")
-      return
+      # If no contact inbox exists, create one so that outgoing replies from VK admins
+      # appear in Chatwoot even if the user hasn't messaged first.
+      Rails.logger.info("VK outgoing message: creating contact inbox for user #{vk_user_id}")
+      @contact_inbox = channel.create_contact_inbox(vk_user_id, {})
     end
   end
 

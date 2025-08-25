@@ -70,7 +70,9 @@ class Channel::Vk < ApplicationRecord
     ContactInboxWithContactBuilder.new({
       source_id: vk_user_id.to_s,
       inbox: inbox,
-      contact_attributes: contact_attributes
+      contact_attributes: contact_attributes.merge(
+        avatar_url: user_info[:avatar_url] || user_info['avatar_url']
+      )
     }).perform
   end
 
