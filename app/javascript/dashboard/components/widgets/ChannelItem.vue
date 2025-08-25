@@ -45,7 +45,7 @@ export default {
       }
 
       if (key === 'vk') {
-        return this.hasVkConfigured;
+        return this.enabledFeatures.channel_vk && this.hasVkConfigured;
       }
 
       if (key === 'voice') {

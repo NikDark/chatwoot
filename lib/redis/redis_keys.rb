@@ -1,4 +1,4 @@
-module Redis::Alfred
+module Redis::RedisKeys
   ## Inbox Keys
   # Array storing the ordered ids for agent round robin assignment
   ROUND_ROBIN_AGENTS = 'ROUND_ROBIN_AGENTS:%<inbox_id>d'.freeze
@@ -40,6 +40,8 @@ module Redis::Alfred
   FACEBOOK_MESSAGE_MUTEX = 'FB_MESSAGE_CREATE_LOCK::%<sender_id>s::%<recipient_id>s'.freeze
   IG_MESSAGE_MUTEX = 'IG_MESSAGE_CREATE_LOCK::%<sender_id>s::%<ig_account_id>s'.freeze
   VK_MESSAGE_MUTEX = 'VK_MESSAGE_CREATE_LOCK::%<group_id>s'.freeze
+  # VK OAuth PKCE state storage (expires in 1 hour)
+  VK_OAUTH_STATE_KEY = 'VK_OAUTH_STATE::%<state>s'.freeze
   SLACK_MESSAGE_MUTEX = 'SLACK_MESSAGE_LOCK::%<conversation_id>s::%<reference_id>s'.freeze
   EMAIL_MESSAGE_MUTEX = 'EMAIL_CHANNEL_LOCK::%<inbox_id>s'.freeze
   CRM_PROCESS_MUTEX = 'CRM_PROCESS_MUTEX::%<hook_id>s'.freeze

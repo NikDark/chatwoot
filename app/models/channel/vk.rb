@@ -42,11 +42,35 @@ class Channel::Vk < ApplicationRecord
     'VK'
   end
 
-  def create_contact_inbox(vk_user_id, name)
+  def create_contact_inbox(vk_user_id, user_info)
+    # Extract name and additional attributes from user_info
+    name = user_info[:name] || user_info['name'] || "VK User #{vk_user_id}"
+
+    contact_attributes = { name: name }
+
+    # Add additional contact attributes if available
+    if user_info[:phone].present?
+      contact_attributes[:phone_number] = user_info[:phone]
+    end
+
+    if user_info[:email].present?
+      contact_attributes[:email] = user_info[:email]
+    end
+
+    # Add custom attributes for VK-specific fields
+    additional_attributes = {}
+    additional_attributes['vk_sex'] = user_info[:sex] if user_info[:sex].present?
+    additional_attributes['vk_verified'] = user_info[:verified] if user_info[:verified].present?
+    additional_attributes['vk_birthday'] = user_info[:birthday] if user_info[:birthday].present?
+
+    if additional_attributes.any?
+      contact_attributes[:additional_attributes] = additional_attributes
+    end
+
     ContactInboxWithContactBuilder.new({
       source_id: vk_user_id.to_s,
       inbox: inbox,
-      contact_attributes: { name: name }
+      contact_attributes: contact_attributes
     }).perform
   end
 

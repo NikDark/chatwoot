@@ -3,15 +3,29 @@ module VkConcern
 
   def vk_authorization_url(state)
     params = {
+      response_type: 'code',
       client_id: vk_app_id,
       redirect_uri: vk_callback_url,
-      scope: 'groups,messages',
-      response_type: 'code',
+      scope: 'groups',
       state: state,
-      v: GlobalConfigService.load('VK_API_VERSION', '5.131')
     }
-    
-    "https://id.vk.com/auth?#{params.to_query}"
+
+    "https://oauth.vk.com/authorize?#{params.to_query}"
+  end
+
+  def generate_pkce_parameters
+    # Generate code_verifier (43-128 characters, a-z, A-Z, 0-9, _, -)
+    code_verifier = SecureRandom.urlsafe_base64(96).tr('+/', '-_')[0...128]
+
+    # Generate code_challenge (SHA256 hash of code_verifier, base64url encoded)
+    code_challenge = Base64.urlsafe_encode64(
+      Digest::SHA256.digest(code_verifier)
+    ).tr('+/', '-_').gsub('=', '')
+
+    {
+      code_verifier: code_verifier,
+      code_challenge: code_challenge
+    }
   end
 
   private
@@ -26,7 +40,7 @@ module VkConcern
 
   def vk_callback_url
     Rails.application.routes.url_helpers.vk_callback_url(
-      protocol: Rails.application.config.force_ssl ? 'https' : 'http',
+      protocol: Rails.application.config.force_ssl ? 'https' : 'https',
       host: ENV.fetch('FRONTEND_URL', 'localhost:3000').gsub(/https?:\/\//, '')
     )
   end

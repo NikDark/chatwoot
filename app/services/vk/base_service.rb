@@ -9,6 +9,7 @@ class Vk::BaseService
   private
 
   def api_request(method, params = {})
+    Rails.logger.info("VK API Request: #{method} #{params}")
     response = HTTParty.get(
       "https://api.vk.com/method/#{method}",
       query: params.merge(
@@ -32,7 +33,7 @@ class Vk::BaseService
 
   def handle_api_error(error)
     error_code = error['error_code']
-    
+
     case error_code
     when 5 # User authorization failed
       channel.authorization_error!
@@ -41,7 +42,7 @@ class Vk::BaseService
     when 901 # Can't send messages for users without permission
       Rails.logger.warn("VK user blocked messages: #{error['error_msg']}")
     end
-    
+
     Rails.logger.error("VK API Error: #{error['error_msg']} (Code: #{error_code})")
   end
 end

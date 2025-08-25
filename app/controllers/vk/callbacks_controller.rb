@@ -1,9 +1,10 @@
 class Vk::CallbacksController < ApplicationController
   include VkConcern
+  include Vk::IntegrationHelper
 
   def show
     return handle_error if params[:error].present?
-    
+
     process_authorization
   rescue StandardError => e
     handle_error(e)
@@ -14,34 +15,42 @@ class Vk::CallbacksController < ApplicationController
   def process_authorization
     code = params[:code]
     state = params[:state]
-    
-    # Validate state parameter for security
-    validate_state_parameter(state)
-    
+
+    Rails.logger.info("VK Callback: Code: #{code}")
+    Rails.logger.info("VK Callback: State: #{state}")
+
+    account_id = state
+
+    @account = Account.find(account_id)
+    Rails.logger.info("VK Callback: Found account: #{@account.name}")
+
     token_response = exchange_code_for_token(code)
+    Rails.logger.info("VK Callback: Token response: #{token_response}")
     group_info = fetch_group_info(token_response['access_token'])
-    
+    Rails.logger.info(group_info)
+
     channel = find_or_create_channel(token_response, group_info)
     create_or_update_inbox(channel, group_info)
-    
+
     redirect_to app_vk_inbox_agents_url(
-      account_id: current_user.account_id,
+      account_id: account.id,
       inbox_id: channel.inbox.id
     )
   end
 
   def exchange_code_for_token(code)
+    request_body = {
+      code: code,
+      redirect_uri: vk_callback_url,
+      client_id: vk_app_id,
+      client_secret: vk_app_secret,
+    }
+
     response = HTTParty.post(
-      'https://id.vk.com/oauth2/auth',
-      body: {
-        client_id: vk_app_id,
-        client_secret: vk_app_secret,
-        redirect_uri: vk_callback_url,
-        code: code,
-        grant_type: 'authorization_code'
-      }
+      'https://oauth.vk.com/access_token',
+      body: request_body
     )
-    
+
     if response.success?
       response.parsed_response
     else
@@ -51,13 +60,15 @@ class Vk::CallbacksController < ApplicationController
 
   def fetch_group_info(access_token)
     response = HTTParty.get(
-      'https://api.vk.com/method/groups.getById',
+      'https://api.vk.com/method/groups.get',
       query: {
         access_token: access_token,
+        filter: ['admin'],
+        extended: 1,
         v: GlobalConfigService.load('VK_API_VERSION', '5.131')
       }
     )
-    
+
     if response.success? && response.parsed_response['response']
       response.parsed_response['response'].first
     else
@@ -67,10 +78,10 @@ class Vk::CallbacksController < ApplicationController
 
   def find_or_create_channel(token_response, group_info)
     existing_channel = Channel::Vk.find_by(
-      group_id: group_info['id'].to_s,
-      account: current_user.account
+      group_id: group_info['id'],
+      account: account
     )
-    
+
     if existing_channel
       existing_channel.update!(
         access_token: token_response['access_token'],
@@ -79,9 +90,9 @@ class Vk::CallbacksController < ApplicationController
       existing_channel
     else
       Channel::Vk.create!(
-        account: current_user.account,
+        account: account,
         access_token: token_response['access_token'],
-        group_id: group_info['id'].to_s,
+        group_id: group_info['id'],
         group_name: group_info['name'],
         confirmation_token: SecureRandom.hex(16)
       )
@@ -90,49 +101,68 @@ class Vk::CallbacksController < ApplicationController
 
   def create_or_update_inbox(channel, group_info)
     return if channel.inbox.present?
-    
-    current_user.account.inboxes.create!(
-      account: current_user.account,
+
+    account.inboxes.create!(
+      account: account,
       channel: channel,
       name: group_info['name']
     )
   end
 
-  def validate_state_parameter(state)
-    return if state.blank?
-    
-    begin
-      verifier = ActiveSupport::MessageVerifier.new(Rails.application.secrets.secret_key_base)
-      data = verifier.verify(state)
-      
-      account_id_str, timestamp_str = data.split(':')
-      account_id = account_id_str.to_i
-      timestamp = timestamp_str.to_i
-      
-      # Check if state is for current user
-      if account_id != current_user.account_id
-        raise "State parameter account mismatch"
-      end
-      
-      # Check if state is not too old (1 hour limit)
-      if Time.current.to_i - timestamp > 3600
-        raise "State parameter expired"
-      end
-      
-    rescue StandardError => e
-      Rails.logger.error("VK state validation error: #{e.message}")
-      raise "Invalid state parameter"
-    end
+
+
+  def account
+    @account
   end
 
   def handle_error(error = nil)
     error_message = error&.message || params[:error_description] || 'Authorization failed'
-    
+
+    # Provide more user-friendly error messages
+    user_friendly_message = case error_message
+                           when /Invalid or expired VK authorization state/i
+                             'VK authorization session has expired. Please try connecting VK again.'
+                           when /Missing.*in VK OAuth data/i
+                             'VK authorization session is corrupted. Please try connecting VK again.'
+                           else
+                             error_message
+                           end
+
     Rails.logger.error("VK authorization error: #{error_message}")
-    
-    redirect_to app_new_vk_inbox_url(
-      account_id: current_user.account_id,
-      error_message: error_message
-    )
+
+    # Try to get account_id from JWT state parameter
+    account_id = get_account_id_from_error_context
+
+    if account_id.present?
+      redirect_to app_new_vk_inbox_url(
+        account_id: account_id,
+        error_message: user_friendly_message
+      )
+    else
+      # Fallback: redirect to root with error message
+      redirect_to root_path, alert: "VK authorization failed: #{user_friendly_message}"
+    end
+  end
+
+  def get_account_id_from_error_context
+    # First try to use account from validated state
+    return account&.id if account.present?
+
+    # Try to extract account_id from Redis state parameter
+    state = params[:state]
+    return nil if state.blank?
+
+    # Try to retrieve OAuth data for error context (without deleting from Redis)
+    begin
+      data = peek_vk_oauth_data(state)
+      if data.present?
+        account_id = data[:account_id]
+        Rails.logger.info("VK: Extracted account_id #{account_id} from Redis for error context")
+        account_id
+      end
+    rescue StandardError => e
+      Rails.logger.debug("VK: Failed to extract account_id from Redis for error context: #{e.message}")
+      nil
+    end
   end
 end

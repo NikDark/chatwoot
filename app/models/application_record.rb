@@ -37,7 +37,7 @@ class ApplicationRecord < ActiveRecord::Base
   end
 
   def validate_content_length(column)
-    max_length = column.type == :text ? 20_000 : 255
+    max_length = column.type == :text ? 20_000 : 500
     return if self[column.name].nil? || self[column.name].length <= max_length
 
     errors.add(column.name.to_sym, "is too long (maximum is #{max_length} characters)")
