@@ -92,11 +92,12 @@ class Vk::SendOnVkService < Base::SendOnChannelService
         message_id = parsed_response['response'].to_s
         Rails.logger.info("VK message sent successfully with ID: #{message_id}")
 
-        # Update source_id and status to 'delivered' to show progress
-        # This will trigger frontend update from 'sent' to 'delivered'
-        message.update!(source_id: message_id, status: :delivered)
-
+        # Update source_id to track the message in VK
+        message.update!(source_id: message_id)
         Rails.logger.info("VK message confirmed with source_id: #{message_id}")
+
+        # Update status to 'delivered' to show progress
+        Messages::StatusUpdateService.new(message, 'delivered').perform
       else
         Rails.logger.warn("VK API unexpected response format: #{parsed_response}")
         Messages::StatusUpdateService.new(message, 'failed', 'Unexpected response format').perform

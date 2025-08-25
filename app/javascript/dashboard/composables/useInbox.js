@@ -129,6 +129,10 @@ export const useInbox = () => {
     return channelType.value === INBOX_TYPES.VOICE;
   });
 
+  const isAVkChannel = computed(() => {
+    return channelType.value === INBOX_TYPES.VK;
+  });
+
   return {
     inbox,
     isAFacebookInbox,
@@ -147,5 +151,6 @@ export const useInbox = () => {
     isAnEmailChannel,
     isAnInstagramChannel,
     isAVoiceChannel,
+    isAVkChannel,
   };
 };

@@ -11,10 +11,28 @@ class Messages::Vk::MessageBuilder
     return if message_data['text'].blank?
 
     @message = Message.create!(message_params)
+
+    # Mark previous outgoing messages as read when user replies
+    mark_previous_messages_as_read
+
     @message
   end
 
   private
+
+  def mark_previous_messages_as_read
+    # Mark all previous outgoing messages as read when user replies
+    # This is a common pattern when read receipts are not available
+    return unless conversation
+
+    conversation.messages
+                .where(message_type: 'outgoing')
+                .where(status: %w[sent delivered])
+                .where('created_at < ?', Time.current)
+                .find_each do |message|
+      Messages::StatusUpdateService.new(message, 'read').perform
+    end
+  end
 
   def conversation
     @conversation ||= find_or_create_conversation

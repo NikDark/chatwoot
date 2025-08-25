@@ -46,7 +46,10 @@ class Channel::Vk < ApplicationRecord
     # Extract name and additional attributes from user_info
     name = user_info[:name] || user_info['name'] || "VK User #{vk_user_id}"
 
-    contact_attributes = { name: name }
+    contact_attributes = {
+      name: name,
+      identifier: "vk_#{vk_user_id}" # Set VK-specific identifier to ensure contact is resolved
+    }
 
     # Add additional contact attributes if available
     if user_info[:phone].present?
@@ -70,7 +73,9 @@ class Channel::Vk < ApplicationRecord
     ContactInboxWithContactBuilder.new({
       source_id: vk_user_id.to_s,
       inbox: inbox,
-      contact_attributes: contact_attributes
+      contact_attributes: contact_attributes.merge(
+        avatar_url: user_info[:avatar_url] || user_info['avatar_url']
+      )
     }).perform
   end
 

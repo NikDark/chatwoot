@@ -20,6 +20,7 @@ const {
   isAWhatsAppChannel,
   isAnEmailChannel,
   isAnInstagramChannel,
+  isAVkChannel,
 } = useInbox();
 
 const {
@@ -60,7 +61,8 @@ const isSent = computed(() => {
     isAFacebookInbox.value ||
     isASmsInbox.value ||
     isATelegramChannel.value ||
-    isAnInstagramChannel.value
+    isAnInstagramChannel.value ||
+    isAVkChannel.value
   ) {
     return sourceId.value && status.value === MESSAGE_STATUS.SENT;
   }
@@ -82,9 +84,9 @@ const isDelivered = computed(() => {
   ) {
     return sourceId.value && status.value === MESSAGE_STATUS.DELIVERED;
   }
-  // All messages marked as delivered for the web widget inbox and API inbox once they are sent.
-  if (isAWebWidgetInbox.value || isAPIInbox.value) {
-    return status.value === MESSAGE_STATUS.SENT;
+  // All messages marked as delivered for the web widget inbox, API inbox, and VK inbox once they are sent.
+  if (isAWebWidgetInbox.value || isAPIInbox.value || isAVkChannel.value) {
+    return status.value === MESSAGE_STATUS.DELIVERED;
   }
   if (isALineChannel.value) {
     return status.value === MESSAGE_STATUS.DELIVERED;
@@ -105,7 +107,7 @@ const isRead = computed(() => {
     return sourceId.value && status.value === MESSAGE_STATUS.READ;
   }
 
-  if (isAWebWidgetInbox.value || isAPIInbox.value) {
+  if (isAWebWidgetInbox.value || isAPIInbox.value || isAVkChannel.value) {
     return status.value === MESSAGE_STATUS.READ;
   }
 

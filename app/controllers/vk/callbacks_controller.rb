@@ -49,8 +49,8 @@ class Vk::CallbacksController < ApplicationController
     groups_auth_url = vk_groups_authorization_url(groups_state, group_ids)
     Rails.logger.info("VK Callback: Redirecting to groups authorization: #{groups_auth_url}")
 
-    # Redirect to groups authorization
-    redirect_to groups_auth_url
+    # Redirect to groups authorization (external VK domain)
+    redirect_to groups_auth_url, allow_other_host: true
   end
 
   def exchange_code_for_token(code)
