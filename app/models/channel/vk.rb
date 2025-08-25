@@ -46,7 +46,10 @@ class Channel::Vk < ApplicationRecord
     # Extract name and additional attributes from user_info
     name = user_info[:name] || user_info['name'] || "VK User #{vk_user_id}"
 
-    contact_attributes = { name: name }
+    contact_attributes = {
+      name: name,
+      identifier: "vk_#{vk_user_id}" # Set VK-specific identifier to ensure contact is resolved
+    }
 
     # Add additional contact attributes if available
     if user_info[:phone].present?
