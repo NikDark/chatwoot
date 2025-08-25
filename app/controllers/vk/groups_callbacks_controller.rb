@@ -35,6 +35,7 @@ class Vk::GroupsCallbacksController < ApplicationController
     created_channels = []
     groups_response['groups'].each do |group_data|
       group_info = fetch_single_group_info(group_data['access_token'], group_data['group_id'])
+      Rails.logger.info("VK Groups Callback: Group info: #{group_info}")
       channel = find_or_create_channel(group_data, group_info)
       create_or_update_inbox(channel, group_info)
       created_channels << channel

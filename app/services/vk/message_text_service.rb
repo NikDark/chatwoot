@@ -7,10 +7,20 @@ class Vk::MessageTextService < Vk::BaseService
   end
 
   def perform
-    return unless valid_message?
+    Rails.logger.info("VK MessageTextService processing: from_id=#{message_data['from_id']}, peer_id=#{message_data['peer_id']}, text=#{message_data['text']}")
+
+    unless valid_message?
+      Rails.logger.info("VK message validation failed")
+      return
+    end
 
     ensure_contact_inbox
-    create_message if @contact_inbox
+    if @contact_inbox
+      create_message
+      Rails.logger.info("VK message created successfully")
+    else
+      Rails.logger.warn("VK contact inbox not found/created")
+    end
   end
 
   private
@@ -18,7 +28,23 @@ class Vk::MessageTextService < Vk::BaseService
   def valid_message?
     message_data['from_id'].present? &&
       message_data['text'].present? &&
-      message_data['from_id'] != channel.group_id.to_i # Skip messages from the group itself
+      !group_message?
+  end
+
+  def group_message?
+    # Skip messages from the group itself (when group posts to its own wall)
+    # But allow admin messages to users (when admin replies to user)
+    group_id = channel.group_id.to_i
+    from_id = message_data['from_id'].to_i
+    peer_id = message_data['peer_id'].to_i
+
+    # If from_id is negative, it's usually a group ID
+    return true if from_id < 0 && from_id.abs == group_id
+
+    # If from_id equals group_id and peer_id equals group_id, it's a group posting to itself
+    return true if from_id == group_id && peer_id == group_id
+
+    false
   end
 
   def ensure_contact_inbox
