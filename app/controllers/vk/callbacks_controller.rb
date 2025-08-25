@@ -24,18 +24,33 @@ class Vk::CallbacksController < ApplicationController
     @account = Account.find(account_id)
     Rails.logger.info("VK Callback: Found account: #{@account.name}")
 
+    # First step: get user access token
     token_response = exchange_code_for_token(code)
     Rails.logger.info("VK Callback: Token response: #{token_response}")
-    group_info = fetch_group_info(token_response['access_token'])
-    Rails.logger.info(group_info)
+    
+    # Get user's admin groups
+    admin_groups = fetch_user_admin_groups(token_response['access_token'])
+    Rails.logger.info("VK Callback: Found #{admin_groups.count} admin groups")
 
-    channel = find_or_create_channel(token_response, group_info)
-    create_or_update_inbox(channel, group_info)
+    if admin_groups.empty?
+      redirect_to app_new_vk_inbox_url(
+        account_id: @account.id,
+        error_message: 'No VK groups found where you are an administrator. You need to be an admin of at least one VK group to connect it to Chatwoot.'
+      )
+      return
+    end
 
-    redirect_to app_vk_inbox_agents_url(
-      account_id: account.id,
-      inbox_id: channel.inbox.id
-    )
+    # Generate state for groups authorization
+    pkce_params = generate_pkce_parameters
+    groups_state = generate_vk_state(@account.id, pkce_params[:code_verifier])
+    group_ids = admin_groups.map { |group| group['id'] }
+    
+    # Generate groups authorization URL
+    groups_auth_url = vk_groups_authorization_url(groups_state, group_ids)
+    Rails.logger.info("VK Callback: Redirecting to groups authorization: #{groups_auth_url}")
+
+    # Redirect to groups authorization
+    redirect_to groups_auth_url
   end
 
   def exchange_code_for_token(code)
@@ -58,56 +73,25 @@ class Vk::CallbacksController < ApplicationController
     end
   end
 
-  def fetch_group_info(access_token)
+  def fetch_user_admin_groups(access_token)
     response = HTTParty.get(
       'https://api.vk.com/method/groups.get',
       query: {
         access_token: access_token,
-        filter: ['admin'],
+        filter: 'admin',
         extended: 1,
         v: GlobalConfigService.load('VK_API_VERSION', '5.131')
       }
     )
 
     if response.success? && response.parsed_response['response']
-      response.parsed_response['response'].first
+      response.parsed_response['response']['items'] || []
     else
-      raise "Failed to fetch group info: #{response.body}"
+      raise "Failed to fetch admin groups: #{response.body}"
     end
   end
 
-  def find_or_create_channel(token_response, group_info)
-    existing_channel = Channel::Vk.find_by(
-      group_id: group_info['id'],
-      account: account
-    )
 
-    if existing_channel
-      existing_channel.update!(
-        access_token: token_response['access_token'],
-        group_name: group_info['name']
-      )
-      existing_channel
-    else
-      Channel::Vk.create!(
-        account: account,
-        access_token: token_response['access_token'],
-        group_id: group_info['id'],
-        group_name: group_info['name'],
-        confirmation_token: SecureRandom.hex(16)
-      )
-    end
-  end
-
-  def create_or_update_inbox(channel, group_info)
-    return if channel.inbox.present?
-
-    account.inboxes.create!(
-      account: account,
-      channel: channel,
-      name: group_info['name']
-    )
-  end
 
 
 

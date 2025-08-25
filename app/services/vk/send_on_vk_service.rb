@@ -13,17 +13,21 @@ class Vk::SendOnVkService < Base::SendOnChannelService
   end
 
   def send_text_message
+    peer_id = contact.get_source_id(inbox.id)
+    Rails.logger.info("VK sending message to peer_id: #{peer_id}, content: #{message.content}")
+
     response = HTTParty.post(
       'https://api.vk.com/method/messages.send',
       body: {
-        peer_id: contact.get_source_id(inbox.id),
+        peer_id: peer_id,
         message: message.content,
         random_id: generate_random_id,
         access_token: channel.access_token,
         v: GlobalConfigService.load('VK_API_VERSION', '5.131')
       }
     )
-    
+
+    Rails.logger.info("VK API response: #{response.body}")
     handle_send_response(response)
   end
 
@@ -61,7 +65,7 @@ class Vk::SendOnVkService < Base::SendOnChannelService
 
   def send_text_message_with_attachment(attachment)
     attachment_message = "📎 #{attachment.file.filename}: #{attachment.download_url}"
-    
+
     response = HTTParty.post(
       'https://api.vk.com/method/messages.send',
       body: {
@@ -72,21 +76,33 @@ class Vk::SendOnVkService < Base::SendOnChannelService
         v: GlobalConfigService.load('VK_API_VERSION', '5.131')
       }
     )
-    
+
     handle_send_response(response)
   end
 
   def handle_send_response(response)
     if response.success?
       parsed_response = response.parsed_response
-      
+      Rails.logger.info("VK API parsed response: #{parsed_response.inspect}")
+
       if parsed_response['error']
+        Rails.logger.error("VK API error: #{parsed_response['error']}")
         handle_api_error(parsed_response['error'])
       elsif parsed_response['response']
-        message.update!(source_id: parsed_response['response'].to_s)
-        Messages::StatusUpdateService.new(message, 'sent').perform
+        message_id = parsed_response['response'].to_s
+        Rails.logger.info("VK message sent successfully with ID: #{message_id}")
+
+        # Update source_id and status to 'delivered' to show progress
+        # This will trigger frontend update from 'sent' to 'delivered'
+        message.update!(source_id: message_id, status: :delivered)
+
+        Rails.logger.info("VK message confirmed with source_id: #{message_id}")
+      else
+        Rails.logger.warn("VK API unexpected response format: #{parsed_response}")
+        Messages::StatusUpdateService.new(message, 'failed', 'Unexpected response format').perform
       end
     else
+      Rails.logger.error("VK API HTTP error: #{response.code} - #{response.body}")
       Messages::StatusUpdateService.new(message, 'failed', 'HTTP Error').perform
     end
   end
@@ -94,7 +110,7 @@ class Vk::SendOnVkService < Base::SendOnChannelService
   def handle_api_error(error)
     error_code = error['error_code']
     error_msg = error['error_msg']
-    
+
     case error_code
     when 5 # User authorization failed
       channel.authorization_error!
@@ -103,7 +119,7 @@ class Vk::SendOnVkService < Base::SendOnChannelService
     when 901 # Can't send messages for users without permission
       Rails.logger.warn("VK user blocked messages: #{error_msg}")
     end
-    
+
     Messages::StatusUpdateService.new(message, 'failed', error_msg).perform
   end
 
