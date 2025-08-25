@@ -42,7 +42,14 @@ RSpec.describe 'VK Integration', type: :integration do
       expect(Vk::WebhookService).to receive(:new).with(channel).and_return(double(setup: true))
       channel.setup_webhook
       
-      # 5. Message processing services are available
+      # 5. VK inbox creation skips agent selection and goes to finish page
+      groups_controller = Vk::GroupsCallbacksController.new
+      allow(groups_controller).to receive(:app_inbox_finish_url).and_return('/finish')
+      
+      # Verify that VK redirects to finish page instead of agents page
+      # This is tested in the groups_callbacks_controller_spec.rb
+      
+      # 6. Message processing services are available
       service = Vk::MessageTextService.new({
         'id' => 123,
         'from_id' => 456,
@@ -51,7 +58,7 @@ RSpec.describe 'VK Integration', type: :integration do
       }, channel)
       expect(service).to be_a(Vk::MessageTextService)
       
-      # 6. Send service is available
+      # 7. Send service is available
       inbox = create(:inbox, channel: channel, account: account)
       contact = create(:contact, account: account)
       contact_inbox = create(:contact_inbox, contact: contact, inbox: inbox)

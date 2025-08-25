@@ -43,9 +43,9 @@ class Vk::GroupsCallbacksController < ApplicationController
 
     Rails.logger.info("VK Groups Callback: Created #{created_channels.count} channels")
 
-    # Redirect to the first created channel or show success page
+    # Redirect directly to success page, skipping agent selection
     if created_channels.any?
-      redirect_to app_vk_inbox_agents_url(
+      redirect_to app_inbox_finish_url(
         account_id: @account.id,
         inbox_id: created_channels.first.inbox.id
       )
