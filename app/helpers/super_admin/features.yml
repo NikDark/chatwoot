@@ -86,6 +86,12 @@ line:
   description: 'Manage your Line customer interactions from Chatwoot.'
   enabled: true
   icon: 'icon-line-line'
+vk:
+  name: 'VK'
+  description: 'Manage your VK community interactions from Chatwoot.'
+  enabled: true
+  icon: 'icon-vk'
+  config_key: 'vk'
 
 # ------- OAuth & Authentication ------- #
 google:

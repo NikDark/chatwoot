@@ -166,6 +166,9 @@
 - name: channel_instagram
   display_name: Instagram Channel
   enabled: true
+- name: channel_vk
+  display_name: VK Channel
+  enabled: true
 - name: crm_integration
   display_name: CRM Integration
   enabled: false

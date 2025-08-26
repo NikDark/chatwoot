@@ -180,7 +180,9 @@ class Contact < ApplicationRecord
     if use_crm_v2
       where(contact_type: 'lead')
     else
-      where("contacts.email <> '' OR contacts.phone_number <> '' OR contacts.identifier <> ''")
+      # Return all contacts - remove filtering based on email/phone/identifier
+      # This allows VK contacts without these fields to be displayed
+      all
     end
   end
 
