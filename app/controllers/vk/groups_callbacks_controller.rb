@@ -16,32 +16,21 @@ class Vk::GroupsCallbacksController < ApplicationController
     code = params[:code]
     state = params[:state]
 
-    Rails.logger.info("VK Groups Callback: Code: #{code}")
-    Rails.logger.info("VK Groups Callback: State: #{state}")
 
-    # Retrieve account_id from state stored in Redis
-    oauth_data = retrieve_vk_oauth_data(state)
-    raise "Invalid or expired VK authorization state" unless oauth_data
-
-    account_id = oauth_data[:account_id]
+    account_id = state
     @account = Account.find(account_id)
-    Rails.logger.info("VK Groups Callback: Found account: #{@account.name}")
 
     # Exchange code for group tokens
     groups_response = exchange_code_for_group_tokens(code)
-    Rails.logger.info("VK Groups Callback: Groups response: #{groups_response}")
 
     # Create channels for each group
     created_channels = []
     groups_response['groups'].each do |group_data|
       group_info = fetch_single_group_info(group_data['access_token'], group_data['group_id'])
-      Rails.logger.info("VK Groups Callback: Group info: #{group_info}")
       channel = find_or_create_channel(group_data, group_info)
-      create_or_update_inbox(channel, group_info)
-      created_channels << channel
+      inbox_created_or_updated = create_or_update_inbox(channel, group_info)
+      created_channels << channel if inbox_created_or_updated
     end
-
-    Rails.logger.info("VK Groups Callback: Created #{created_channels.count} channels")
 
     # Redirect directly to success page, skipping agent selection
     if created_channels.any?
@@ -52,7 +41,7 @@ class Vk::GroupsCallbacksController < ApplicationController
     else
       redirect_to app_new_vk_inbox_url(
         account_id: @account.id,
-        success_message: 'VK groups connected successfully, but no new channels were created.'
+        success_message: 'VK groups connected successfully, but no new inboxes were created.'
       )
     end
   end
@@ -105,7 +94,6 @@ class Vk::GroupsCallbacksController < ApplicationController
         access_token: group_data['access_token'],
         group_name: group_info['name']
       )
-      Rails.logger.info("VK Groups Callback: Updated existing channel for group #{group_data['group_id']}")
       existing_channel
     else
       channel = Channel::Vk.create!(
@@ -115,20 +103,32 @@ class Vk::GroupsCallbacksController < ApplicationController
         group_name: group_info['name'],
         confirmation_token: SecureRandom.hex(16)
       )
-      Rails.logger.info("VK Groups Callback: Created new channel for group #{group_data['group_id']}")
       channel
     end
   end
 
   def create_or_update_inbox(channel, group_info)
-    return if channel.inbox.present?
+    if channel.inbox.present?
+      # Update existing inbox name if it has changed
+      if channel.inbox.name != group_info['name']
+        channel.inbox.update!(name: group_info['name'])
+        Rails.logger.info("VK Groups Callback: Updated inbox name for group #{group_info['name']}")
+      else
+        Rails.logger.info("VK Groups Callback: Inbox already exists for group #{group_info['name']}")
+      end
+      return false
+    end
 
-    @account.inboxes.create!(
+    inbox = @account.inboxes.create!(
       account: @account,
       channel: channel,
       name: group_info['name']
     )
-    Rails.logger.info("VK Groups Callback: Created inbox for group #{group_info['name']}")
+
+    # Force reload the channel to ensure the association is loaded
+    channel.reload
+
+    true
   end
 
   def handle_error(error = nil)

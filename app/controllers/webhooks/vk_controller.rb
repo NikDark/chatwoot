@@ -2,9 +2,6 @@ class Webhooks::VkController < ActionController::API
   before_action :verify_signature, except: [:verify]
 
   def verify
-    Rails.logger.info("VK webhook verify called with params: #{params.inspect}")
-    Rails.logger.info("VK webhook verify headers: #{request.headers.to_h.select { |k,v| k.start_with?('HTTP_') }}")
-
     # Handle VK callback confirmation
     group_id = params['group_id']
     if group_id.blank?
@@ -22,7 +19,6 @@ class Webhooks::VkController < ActionController::API
     begin
       # Get confirmation code from VK API
       confirmation_code = fetch_callback_confirmation_code(channel)
-      Rails.logger.info("VK webhook verify: returning confirmation code '#{confirmation_code}' for group #{group_id}")
       render plain: confirmation_code
     rescue StandardError => e
       Rails.logger.error("VK webhook verify error: #{e.message}")
@@ -94,7 +90,6 @@ class Webhooks::VkController < ActionController::API
         v: GlobalConfigService.load('VK_API_VERSION', '5.131')
       }
     )
-    Rails.logger.info("VK афывоалдофыдвоадфоывдлаофываAPI Response: #{response.body}")
 
     if response.success? && response.parsed_response['response']
       response.parsed_response['response']['code']

@@ -16,21 +16,15 @@ class Vk::CallbacksController < ApplicationController
     code = params[:code]
     state = params[:state]
 
-    Rails.logger.info("VK Callback: Code: #{code}")
-    Rails.logger.info("VK Callback: State: #{state}")
-
     account_id = state
 
     @account = Account.find(account_id)
-    Rails.logger.info("VK Callback: Found account: #{@account.name}")
 
     # First step: get user access token
     token_response = exchange_code_for_token(code)
-    Rails.logger.info("VK Callback: Token response: #{token_response}")
-    
+
     # Get user's admin groups
     admin_groups = fetch_user_admin_groups(token_response['access_token'])
-    Rails.logger.info("VK Callback: Found #{admin_groups.count} admin groups")
 
     if admin_groups.empty?
       redirect_to app_new_vk_inbox_url(
@@ -42,12 +36,11 @@ class Vk::CallbacksController < ApplicationController
 
     # Generate state for groups authorization
     pkce_params = generate_pkce_parameters
-    groups_state = generate_vk_state(@account.id, pkce_params[:code_verifier])
+    groups_state = @account.id
     group_ids = admin_groups.map { |group| group['id'] }
-    
+
     # Generate groups authorization URL
     groups_auth_url = vk_groups_authorization_url(groups_state, group_ids)
-    Rails.logger.info("VK Callback: Redirecting to groups authorization: #{groups_auth_url}")
 
     # Redirect to groups authorization (external VK domain)
     redirect_to groups_auth_url, allow_other_host: true
@@ -141,7 +134,6 @@ class Vk::CallbacksController < ApplicationController
       data = peek_vk_oauth_data(state)
       if data.present?
         account_id = data[:account_id]
-        Rails.logger.info("VK: Extracted account_id #{account_id} from Redis for error context")
         account_id
       end
     rescue StandardError => e
