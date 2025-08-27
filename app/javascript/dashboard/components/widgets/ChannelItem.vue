@@ -23,6 +23,9 @@ export default {
     hasVkConfigured() {
       return window.chatwootConfig?.vkAppId;
     },
+    hasMaxConfigured() {
+      return window.chatwootConfig?.maxAppId;
+    },
     isActive() {
       const { key } = this.channel;
       if (Object.keys(this.enabledFeatures).length === 0) {
@@ -48,6 +51,10 @@ export default {
         return this.enabledFeatures.channel_vk && this.hasVkConfigured;
       }
 
+      if (key === 'max') {
+        return this.enabledFeatures.channel_max && this.hasMaxConfigured;
+      }
+
       if (key === 'voice') {
         return this.enabledFeatures.channel_voice;
       }
@@ -59,6 +66,7 @@ export default {
         'whatsapp',
         'sms',
         'telegram',
+        'max',
         'line',
         'instagram',
         'vk',

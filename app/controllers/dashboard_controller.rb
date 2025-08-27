@@ -67,6 +67,7 @@ class DashboardController < ActionController::Base
       FB_APP_ID: GlobalConfigService.load('FB_APP_ID', ''),
       INSTAGRAM_APP_ID: GlobalConfigService.load('INSTAGRAM_APP_ID', ''),
       VK_APP_ID: GlobalConfigService.load('VK_APP_ID', ''),
+      MAX_APP_ID: GlobalConfigService.load('MAX_APP_ID', ''),
       FACEBOOK_API_VERSION: GlobalConfigService.load('FACEBOOK_API_VERSION', 'v17.0'),
       WHATSAPP_APP_ID: GlobalConfigService.load('WHATSAPP_APP_ID', ''),
       WHATSAPP_CONFIGURATION_ID: GlobalConfigService.load('WHATSAPP_CONFIGURATION_ID', ''),
