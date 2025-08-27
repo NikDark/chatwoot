@@ -39,6 +39,7 @@ export default {
           thumbnail: apiChannelThumbnail,
         },
         { key: 'telegram', name: 'Telegram' },
+        { key: 'max', name: 'MAX' },
         { key: 'line', name: 'Line' },
         { key: 'instagram', name: 'Instagram' },
         { key: 'vk', name: 'VK' },

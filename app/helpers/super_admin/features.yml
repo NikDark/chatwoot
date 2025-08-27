@@ -93,6 +93,13 @@ vk:
   icon: 'icon-vk'
   config_key: 'vk'
 
+max:
+  name: 'MAX'
+  description: 'Manage your MAX messenger interactions from Chatwoot.'
+  enabled: true
+  icon: 'icon-message-line'
+  config_key: 'max'
+
 # ------- OAuth & Authentication ------- #
 google:
   name: 'Google'

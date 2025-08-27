@@ -7,6 +7,7 @@ export const INBOX_TYPES = {
   API: 'Channel::Api',
   EMAIL: 'Channel::Email',
   TELEGRAM: 'Channel::Telegram',
+  MAX: 'Channel::Max',
   LINE: 'Channel::Line',
   SMS: 'Channel::Sms',
   INSTAGRAM: 'Channel::Instagram',
@@ -22,6 +23,7 @@ const INBOX_ICON_MAP_FILL = {
   [INBOX_TYPES.API]: 'i-ri-cloudy-fill',
   [INBOX_TYPES.EMAIL]: 'i-ri-mail-fill',
   [INBOX_TYPES.TELEGRAM]: 'i-ri-telegram-fill',
+  [INBOX_TYPES.MAX]: 'i-ri-chat-1-fill',
   [INBOX_TYPES.LINE]: 'i-ri-line-fill',
   [INBOX_TYPES.INSTAGRAM]: 'i-ri-instagram-fill',
   [INBOX_TYPES.VOICE]: 'i-ri-phone-fill',
@@ -38,6 +40,7 @@ const INBOX_ICON_MAP_LINE = {
   [INBOX_TYPES.API]: 'i-ri-cloudy-line',
   [INBOX_TYPES.EMAIL]: 'i-ri-mail-line',
   [INBOX_TYPES.TELEGRAM]: 'i-ri-telegram-line',
+  [INBOX_TYPES.MAX]: 'i-ri-chat-1-line',
   [INBOX_TYPES.LINE]: 'i-ri-line-line',
   [INBOX_TYPES.INSTAGRAM]: 'i-ri-instagram-line',
   [INBOX_TYPES.VOICE]: 'i-ri-phone-line',
@@ -89,6 +92,9 @@ export const getReadableInboxByType = (type, phoneNumber) => {
     case INBOX_TYPES.TELEGRAM:
       return 'telegram';
 
+    case INBOX_TYPES.MAX:
+      return 'max';
+
     case INBOX_TYPES.LINE:
       return 'line';
 
@@ -130,6 +136,9 @@ export const getInboxClassByType = (type, phoneNumber) => {
 
     case INBOX_TYPES.TELEGRAM:
       return 'brand-telegram';
+
+    case INBOX_TYPES.MAX:
+      return 'chat';
 
     case INBOX_TYPES.LINE:
       return 'brand-line';
